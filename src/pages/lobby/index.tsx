@@ -8,10 +8,10 @@ import WorryCard from '@/components/WorryCard'
 import EmptyState from '@/components/EmptyState'
 
 const LobbyPage: React.FC = () => {
-  const { userStats, myWorries, assignedTasks } = useApp()
+  const { userStats, myWorries, assignedTasks, refreshTimeouts } = useApp()
 
   useDidShow(() => {
-    console.log('[Lobby] Page showed')
+    refreshTimeouts()
   })
 
   const pendingWorries = myWorries.filter(w => w.status === 'pending' || w.status === 'matched')

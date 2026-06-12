@@ -61,6 +61,23 @@ export interface UserStats {
   thankedCount: number
 }
 
+export interface BlockedUser {
+  id: string
+  name: string
+  emoji: string
+  blockedAt: string
+}
+
+export interface MyResponse {
+  id: string
+  worryId: string
+  worryContent: string
+  worryCategory: CategoryType
+  type: ResponseType
+  content: string
+  createdAt: string
+}
+
 export interface CategoryOption {
   value: CategoryType
   label: string

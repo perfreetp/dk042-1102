@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { View, Text, Button, ScrollView } from '@tarojs/components'
-import Taro from '@tarojs/taro'
+import Taro, { useDidShow } from '@tarojs/taro'
 import styles from './index.module.scss'
 import classnames from 'classnames'
 import { useApp } from '@/store/AppContext'
@@ -11,13 +11,17 @@ import EmptyState from '@/components/EmptyState'
 type TabType = 'all' | 'responded' | 'pending'
 
 const MinePage: React.FC = () => {
-  const { myWorries, userStats, toggleFavorite, thankResponse } = useApp()
+  const { myWorries, userStats, toggleFavorite, thankResponse, refreshTimeouts } = useApp()
   const [activeTab, setActiveTab] = useState<TabType>('all')
+
+  useDidShow(() => {
+    refreshTimeouts()
+  })
 
   const filteredWorries = myWorries.filter(w => {
     if (activeTab === 'all') return true
     if (activeTab === 'responded') return !!w.response
-    if (activeTab === 'pending') return !w.response
+    if (activeTab === 'pending') return w.status === 'pending' || w.status === 'matched'
     return true
   })
 

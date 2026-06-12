@@ -1,8 +1,9 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { View, Text, Textarea, Button } from '@tarojs/components'
-import Taro from '@tarojs/taro'
+import Taro, { useRouter, useDidShow } from '@tarojs/taro'
 import styles from './index.module.scss'
 import classnames from 'classnames'
+import { useApp } from '@/store/AppContext'
 
 const REASONS = [
   { value: 'harassment', label: '骚扰或人身攻击' },
@@ -12,22 +13,49 @@ const REASONS = [
   { value: 'other', label: '其他原因' }
 ]
 
-const BLOCKED_USERS = [
-  { id: 'u1', name: '匿名用户#A23F', emoji: '🌑' }
-]
-
 const ReportPage: React.FC = () => {
+  const router = useRouter()
+  const { blockedUsers, addBlockedUser, removeBlockedUser, refreshTimeouts } = useApp()
   const [selectedReason, setSelectedReason] = useState<string | null>(null)
   const [detail, setDetail] = useState('')
   const [shouldBlock, setShouldBlock] = useState(true)
 
+  const responseId = router.params.id
+  const reportType = router.params.type
+
+  useDidShow(() => {
+    refreshTimeouts()
+  })
+
   const canSubmit = selectedReason !== null
+
+  const generateAnonymousName = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    let code = ''
+    for (let i = 0; i < 4; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    return `匿名用户#${code}`
+  }
+
+  const getRandomEmoji = () => {
+    const emojis = ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘', '🌙', '🌚']
+    return emojis[Math.floor(Math.random() * emojis.length)]
+  }
 
   const handleSubmit = () => {
     if (!canSubmit) {
       Taro.showToast({ title: '请选择举报原因', icon: 'none' })
       return
     }
+
+    if (shouldBlock) {
+      addBlockedUser({
+        name: generateAnonymousName(),
+        emoji: getRandomEmoji()
+      })
+    }
+
     Taro.showModal({
       title: '举报已提交',
       content: '感谢你的反馈，我们会尽快处理。' + (shouldBlock ? '\n\n已同时将该用户加入黑名单。' : ''),
@@ -38,8 +66,17 @@ const ReportPage: React.FC = () => {
     })
   }
 
-  const handleUnblock = () => {
-    Taro.showToast({ title: '已解除拉黑', icon: 'success' })
+  const handleUnblock = (userId: string) => {
+    Taro.showModal({
+      title: '解除拉黑',
+      content: '确定要解除对该用户的拉黑吗？',
+      success: (res) => {
+        if (res.confirm) {
+          removeBlockedUser(userId)
+          Taro.showToast({ title: '已解除拉黑', icon: 'success' })
+        }
+      }
+    })
   }
 
   return (
@@ -99,18 +136,18 @@ const ReportPage: React.FC = () => {
       <View className={styles.section} style={{ marginTop: '48rpx' }}>
         <Text className={styles.sectionTitle}>我的黑名单</Text>
         <View className={styles.blockedList}>
-          {BLOCKED_USERS.length === 0 ? (
+          {blockedUsers.length === 0 ? (
             <Text style={{ fontSize: '26rpx', color: '#9A9AB0', padding: '20rpx 0' }}>
               暂无拉黑的用户
             </Text>
           ) : (
-            BLOCKED_USERS.map(u => (
+            blockedUsers.map(u => (
               <View key={u.id} className={styles.blockedItem}>
                 <View className={styles.blockedInfo}>
                   <View className={styles.avatar}>{u.emoji}</View>
                   <Text className={styles.blockedName}>{u.name}</Text>
                 </View>
-                <Button className={styles.unblockBtn} onClick={handleUnblock}>
+                <Button className={styles.unblockBtn} onClick={() => handleUnblock(u.id)}>
                   解除拉黑
                 </Button>
               </View>

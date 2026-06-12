@@ -1,6 +1,6 @@
 import React from 'react'
 import { View, Text, Button } from '@tarojs/components'
-import Taro, { useRouter } from '@tarojs/taro'
+import Taro, { useRouter, useDidShow } from '@tarojs/taro'
 import styles from './index.module.scss'
 import classnames from 'classnames'
 import { useApp } from '@/store/AppContext'
@@ -11,8 +11,12 @@ import EmptyState from '@/components/EmptyState'
 
 const DetailPage: React.FC = () => {
   const router = useRouter()
-  const { myWorries, toggleFavorite, thankResponse } = useApp()
+  const { myWorries, toggleFavorite, thankResponse, refreshTimeouts } = useApp()
   const worryId = router.params.id
+
+  useDidShow(() => {
+    refreshTimeouts()
+  })
 
   const worry = myWorries.find(w => w.id === worryId)
 
