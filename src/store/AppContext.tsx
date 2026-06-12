@@ -11,7 +11,15 @@ const STORAGE_KEYS = {
   USER_STATS: 'worry_user_stats',
   FAVORITES: 'worry_favorites',
   BLOCKED_USERS: 'worry_blocked_users',
-  MY_RESPONSES: 'worry_my_responses'
+  MY_RESPONSES: 'worry_my_responses',
+  TASK_DRAFTS: 'worry_task_drafts'
+}
+
+export interface TaskDraft {
+  taskId: string
+  type: ResponseType
+  content: string
+  savedAt: string
 }
 
 const getFromStorage = <T,>(key: string, defaultValue: T): T => {
@@ -51,7 +59,34 @@ const checkAndUpdateTimeouts = (worries: Worry[]): Worry[] => {
 }
 
 const checkAndUpdateTaskTimeouts = (tasks: AssignedTask[]): AssignedTask[] => {
-  return tasks
+  const now = Date.now()
+  return tasks.map(t => {
+    if (!t.completed && !t.skipped && !t.expired && new Date(t.expiresAt).getTime() <= now) {
+      return { ...t, expired: true }
+    }
+    return t
+  })
+}
+
+const isThisWeek = (d: Date): boolean => {
+  const today = new Date()
+  const startOfWeek = new Date(today)
+  const day = today.getDay() || 7
+  startOfWeek.setDate(today.getDate() - day + 1)
+  startOfWeek.setHours(0, 0, 0, 0)
+  return d >= startOfWeek
+}
+
+const isThisMonth = (d: Date): boolean => {
+  const today = new Date()
+  return d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth()
+}
+
+export interface PeriodSummary {
+  postedCount: number
+  respondedCount: number
+  thankedCount: number
+  checkinCount: number
 }
 
 const EMPTY_RESPONSES_POOL: Record<ResponseType, string[]> = {
@@ -83,6 +118,7 @@ interface AppContextType {
   favorites: Response[]
   blockedUsers: BlockedUser[]
   myResponses: MyResponse[]
+  taskDrafts: TaskDraft[]
   hasCheckedInToday: boolean
   addWorry: (worry: Omit<Worry, 'id' | 'createdAt' | 'expiresAt' | 'status'>) => void
   completeTask: (taskId: string, response: Omit<Response, 'id' | 'worryId' | 'createdAt' | 'isAnonymous' | 'isFavorite' | 'isThanked' | 'canFollowUp'>) => void
@@ -93,8 +129,13 @@ interface AppContextType {
   checkinMood: (mood: MoodCheckin['mood'], note: string) => void
   addBlockedUser: (user: Omit<BlockedUser, 'id' | 'blockedAt'>) => void
   removeBlockedUser: (userId: string) => void
+  isBlockedByName: (name: string) => boolean
   refreshTimeouts: () => void
   getWeeklyMoods: () => (MoodCheckin | null)[]
+  getSummary: (period: 'week' | 'month') => PeriodSummary
+  saveTaskDraft: (taskId: string, type: ResponseType, content: string) => void
+  getTaskDraft: (taskId: string) => TaskDraft | undefined
+  clearTaskDraft: (taskId: string) => void
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined)
@@ -121,7 +162,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const [favorites, setFavorites] = useState<Response[]>(() => {
     const stored = getFromStorage<Response[]>(STORAGE_KEYS.FAVORITES, [])
-    return stored.length > 0 ? stored : mockFavorites
+    return stored
   })
 
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>(() => {
@@ -130,6 +171,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const [myResponses, setMyResponses] = useState<MyResponse[]>(() => {
     return getFromStorage<MyResponse[]>(STORAGE_KEYS.MY_RESPONSES, [])
+  })
+
+  const [taskDrafts, setTaskDrafts] = useState<TaskDraft[]>(() => {
+    return getFromStorage<TaskDraft[]>(STORAGE_KEYS.TASK_DRAFTS, [])
   })
 
   useEffect(() => {
@@ -160,6 +205,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setToStorage(STORAGE_KEYS.MY_RESPONSES, myResponses)
   }, [myResponses])
 
+  useEffect(() => {
+    setToStorage(STORAGE_KEYS.TASK_DRAFTS, taskDrafts)
+  }, [taskDrafts])
+
   const hasCheckedInToday = useMemo(() => {
     const today = new Date()
     return moodHistory.some(m => isSameDay(new Date(m.createdAt), today))
@@ -179,6 +228,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const refreshTimeouts = useCallback(() => {
     setMyWorries(prev => checkAndUpdateTimeouts(prev))
+    setAssignedTasks(prev => checkAndUpdateTaskTimeouts(prev))
   }, [])
 
   const addWorry = (worry: Omit<Worry, 'id' | 'createdAt' | 'expiresAt' | 'status'>) => {
@@ -198,8 +248,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const task = assignedTasks.find(t => t.id === taskId)
     if (!task) return
 
+    const now = Date.now()
+    const isExpired = new Date(task.expiresAt).getTime() <= now
+
     setAssignedTasks(prev => prev.map(t =>
-      t.id === taskId ? { ...t, completed: true } : t
+      t.id === taskId ? { ...t, completed: true, expired: isExpired } : t
     ))
 
     const myResp: MyResponse = {
@@ -218,34 +271,38 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       dailyUsed: prev.dailyUsed + 1
     }))
 
-    setMyWorries(prev => {
-      const refreshed = checkAndUpdateTimeouts(prev)
-      const pendingWorry = refreshed.find(w => w.status === 'pending' || w.status === 'matched')
-      if (!pendingWorry) return refreshed
+    setTaskDrafts(prev => prev.filter(d => d.taskId !== taskId))
 
-      const pool = EMPTY_RESPONSES_POOL[pendingWorry.expectedResponse] || EMPTY_RESPONSES_POOL.empathy
-      const randomContent = pool[Math.floor(Math.random() * pool.length)]
+    if (!isExpired) {
+      setMyWorries(prev => {
+        const refreshed = checkAndUpdateTimeouts(prev)
+        const pendingWorry = refreshed.find(w => w.status === 'pending' || w.status === 'matched')
+        if (!pendingWorry) return refreshed
 
-      const newResponse: Response = {
-        id: generateId(),
-        worryId: pendingWorry.id,
-        type: pendingWorry.expectedResponse,
-        content: randomContent,
-        createdAt: new Date().toISOString(),
-        isAnonymous: true,
-        isFavorite: false,
-        isThanked: false,
-        canFollowUp: true
-      }
+        const pool = EMPTY_RESPONSES_POOL[pendingWorry.expectedResponse] || EMPTY_RESPONSES_POOL.empathy
+        const randomContent = pool[Math.floor(Math.random() * pool.length)]
 
-      return refreshed.map(w =>
-        w.id === pendingWorry.id
-          ? { ...w, status: 'responded' as const, response: newResponse }
-          : w
-      )
-    })
+        const newResponse: Response = {
+          id: generateId(),
+          worryId: pendingWorry.id,
+          type: pendingWorry.expectedResponse,
+          content: randomContent,
+          createdAt: new Date().toISOString(),
+          isAnonymous: true,
+          isFavorite: false,
+          isThanked: false,
+          canFollowUp: true
+        }
 
-    setUserStats(prev => ({ ...prev, receivedCount: prev.receivedCount + 1 }))
+        return refreshed.map(w =>
+          w.id === pendingWorry.id
+            ? { ...w, status: 'responded' as const, response: newResponse }
+            : w
+        )
+      })
+
+      setUserStats(prev => ({ ...prev, receivedCount: prev.receivedCount + 1 }))
+    }
   }
 
   const skipTask = (taskId: string) => {
@@ -331,13 +388,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }
 
   const addBlockedUser = (user: Omit<BlockedUser, 'id' | 'blockedAt'>) => {
-    const newBlocked: BlockedUser = {
-      ...user,
-      id: generateId(),
-      blockedAt: new Date().toISOString()
-    }
     setBlockedUsers(prev => {
-      if (prev.some(u => u.name === user.name)) return prev
+      const existing = prev.find(u => u.name === user.name)
+      if (existing) return prev
+      const newBlocked: BlockedUser = {
+        ...user,
+        id: generateId(),
+        blockedAt: new Date().toISOString()
+      }
       return [newBlocked, ...prev]
     })
   }
@@ -345,6 +403,41 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const removeBlockedUser = (userId: string) => {
     setBlockedUsers(prev => prev.filter(u => u.id !== userId))
   }
+
+  const isBlockedByName = useCallback((name: string): boolean => {
+    return blockedUsers.some(u => u.name === name)
+  }, [blockedUsers])
+
+  const getSummary = useCallback((period: 'week' | 'month'): PeriodSummary => {
+    const filter = period === 'week' ? isThisWeek : isThisMonth
+    const postedCount = myWorries.filter(w => filter(new Date(w.createdAt))).length
+    const respondedCount = myResponses.filter(r => filter(new Date(r.createdAt))).length
+    const thankedCount = myWorries.filter(w => w.response?.isThanked && filter(new Date(w.createdAt))).length
+    const checkinCount = moodHistory.filter(m => filter(new Date(m.createdAt))).length
+    return { postedCount, respondedCount, thankedCount, checkinCount }
+  }, [myWorries, myResponses, moodHistory])
+
+  const saveTaskDraft = useCallback((taskId: string, type: ResponseType, content: string) => {
+    setTaskDrafts(prev => {
+      const others = prev.filter(d => d.taskId !== taskId)
+      if (!content && type === 'empathy') return others
+      const draft: TaskDraft = {
+        taskId,
+        type,
+        content,
+        savedAt: new Date().toISOString()
+      }
+      return [draft, ...others]
+    })
+  }, [])
+
+  const getTaskDraft = useCallback((taskId: string): TaskDraft | undefined => {
+    return taskDrafts.find(d => d.taskId === taskId)
+  }, [taskDrafts])
+
+  const clearTaskDraft = useCallback((taskId: string) => {
+    setTaskDrafts(prev => prev.filter(d => d.taskId !== taskId))
+  }, [])
 
   return (
     <AppContext.Provider value={{
@@ -355,6 +448,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       favorites,
       blockedUsers,
       myResponses,
+      taskDrafts,
       hasCheckedInToday,
       addWorry,
       completeTask,
@@ -365,8 +459,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       checkinMood,
       addBlockedUser,
       removeBlockedUser,
+      isBlockedByName,
       refreshTimeouts,
-      getWeeklyMoods
+      getWeeklyMoods,
+      getSummary,
+      saveTaskDraft,
+      getTaskDraft,
+      clearTaskDraft
     }}>
       {children}
     </AppContext.Provider>

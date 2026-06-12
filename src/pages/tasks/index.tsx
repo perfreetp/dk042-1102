@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { View, Text, Button, Textarea, ScrollView } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
 import styles from './index.module.scss'
@@ -20,7 +20,7 @@ const COMPANION_TIPS = [
 ]
 
 const TasksPage: React.FC = () => {
-  const { assignedTasks, userStats, completeTask, skipTask, refreshTimeouts } = useApp()
+  const { assignedTasks, userStats, completeTask, skipTask, refreshTimeouts, saveTaskDraft, getTaskDraft, clearTaskDraft } = useApp()
 
   useDidShow(() => {
     refreshTimeouts()
@@ -30,13 +30,31 @@ const TasksPage: React.FC = () => {
   const [currentTask, setCurrentTask] = useState<AssignedTask | null>(null)
   const [respType, setRespType] = useState<ResponseType>('empathy')
   const [respContent, setRespContent] = useState('')
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const pendingTasks = assignedTasks.filter(t => !t.completed && !t.skipped)
-  const completedTasks = assignedTasks.filter(t => t.completed || t.skipped)
+  const pendingTasks = assignedTasks.filter(t => !t.completed && !t.skipped && !t.expired)
+  const completedTasks = assignedTasks.filter(t => t.completed || t.skipped || t.expired)
 
   const displayTasks = activeTab === 'pending' ? pendingTasks : completedTasks
 
+  const isTaskExpired = (task: AssignedTask | null): boolean => {
+    if (!task) return true
+    if (task.expired) return true
+    return new Date(task.expiresAt).getTime() <= Date.now()
+  }
+
+  const persistDraft = (taskId: string, type: ResponseType, content: string) => {
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current)
+    draftTimerRef.current = setTimeout(() => {
+      saveTaskDraft(taskId, type, content)
+    }, 300)
+  }
+
   const handleOpenModal = (task: AssignedTask) => {
+    if (isTaskExpired(task)) {
+      Taro.showToast({ title: '这条任务已超时', icon: 'none' })
+      return
+    }
     if (containsSensitiveContent(task.worry.content)) {
       Taro.showModal({
         title: '温馨提示',
@@ -53,12 +71,22 @@ const TasksPage: React.FC = () => {
 
   const openModal = (task: AssignedTask) => {
     setCurrentTask(task)
-    setRespType(task.worry.expectedResponse)
-    setRespContent('')
+    const draft = getTaskDraft(task.id)
+    if (draft) {
+      setRespType(draft.type)
+      setRespContent(draft.content)
+    } else {
+      setRespType(task.worry.expectedResponse)
+      setRespContent('')
+    }
     setShowModal(true)
   }
 
   const handleCloseModal = () => {
+    if (currentTask && respContent.trim()) {
+      saveTaskDraft(currentTask.id, respType, respContent.trim())
+    }
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current)
     setShowModal(false)
     setCurrentTask(null)
     setRespContent('')
@@ -71,6 +99,7 @@ const TasksPage: React.FC = () => {
       success: (res) => {
         if (res.confirm) {
           skipTask(taskId)
+          clearTaskDraft(taskId)
           Taro.showToast({ title: '已跳过', icon: 'success' })
         }
       }
@@ -78,7 +107,19 @@ const TasksPage: React.FC = () => {
   }
 
   const handleTipClick = (tip: string) => {
-    setRespContent(prev => prev + (prev ? ' ' : '') + tip)
+    const newContent = respContent + (respContent ? ' ' : '') + tip
+    setRespContent(newContent)
+    if (currentTask) persistDraft(currentTask.id, respType, newContent)
+  }
+
+  const handleContentChange = (val: string) => {
+    setRespContent(val)
+    if (currentTask) persistDraft(currentTask.id, respType, val)
+  }
+
+  const handleTypeChange = (val: ResponseType) => {
+    setRespType(val)
+    if (currentTask) persistDraft(currentTask.id, val, respContent)
   }
 
   const handleSubmit = () => {
@@ -87,6 +128,12 @@ const TasksPage: React.FC = () => {
       return
     }
     if (!currentTask) return
+
+    if (isTaskExpired(currentTask)) {
+      Taro.showToast({ title: '这条任务已超时，无法发送', icon: 'none' })
+      handleCloseModal()
+      return
+    }
 
     if (containsSensitiveContent(respContent)) {
       Taro.showToast({ title: '内容包含敏感词，请调整', icon: 'none' })
@@ -156,9 +203,10 @@ const TasksPage: React.FC = () => {
             const category = getCategoryInfo(task.worry.category)
             const severity = getSeverityInfo(task.worry.severity)
             const expType = RESPONSE_TYPES.find(r => r.value === task.worry.expectedResponse)
+            const taskExpired = isTaskExpired(task)
 
             return (
-              <View key={task.id} className={styles.worryCard}>
+              <View key={task.id} className={classnames(styles.worryCard, taskExpired && styles.expiredCard)}>
                 <View className={styles.cardHeader}>
                   <View className={styles.tags}>
                     <View className={classnames(styles.tag, styles.categoryTag)}>
@@ -177,16 +225,25 @@ const TasksPage: React.FC = () => {
                 </View>
                 <Text className={styles.content}>{task.worry.content}</Text>
                 <View className={styles.cardHeader}>
-                  <Text className={styles.timeLeft}>⏳ 剩余 {getRemainingTime(task.expiresAt)}</Text>
+                  {taskExpired ? (
+                    <Text className={styles.timeLeft} style={{ color: '#FF4D4F' }}>⏰ 已超时</Text>
+                  ) : (
+                    <Text className={styles.timeLeft}>⏳ 剩余 {getRemainingTime(task.expiresAt)}</Text>
+                  )}
                   {task.skipped && <Text style={{ fontSize: '22rpx', color: '#9A9AB0' }}>已跳过</Text>}
                   {task.completed && <Text style={{ fontSize: '22rpx', color: '#52C41A' }}>✓ 已回应</Text>}
                 </View>
-                {!task.completed && !task.skipped && (
+                {!task.completed && !task.skipped && !taskExpired && (
                   <View className={styles.cardFooter}>
                     <Button className={styles.skipBtn} onClick={() => handleSkip(task.id)}>跳过</Button>
                     <Button className={styles.respondBtn} onClick={() => handleOpenModal(task)}>
                       写回应
                     </Button>
+                  </View>
+                )}
+                {taskExpired && !task.completed && (
+                  <View className={styles.cardFooter}>
+                    <Text style={{ fontSize: '24rpx', color: '#9A9AB0' }}>任务已超时，无法回应</Text>
                   </View>
                 )}
               </View>
@@ -215,6 +272,12 @@ const TasksPage: React.FC = () => {
               </Text>
             </View>
 
+            {isTaskExpired(currentTask) ? (
+              <View className={styles.expiredNotice}>
+                <Text>⏰ 这条任务已超时，无法发送</Text>
+              </View>
+            ) : null}
+
             <View className={styles.typeSection}>
               <Text className={styles.typeLabel}>回应方式</Text>
               <View className={styles.typeGrid}>
@@ -222,7 +285,7 @@ const TasksPage: React.FC = () => {
                   <View
                     key={rt.value}
                     className={classnames(styles.typeItem, respType === rt.value && styles.typeActive)}
-                    onClick={() => setRespType(rt.value)}
+                    onClick={() => !isTaskExpired(currentTask) && handleTypeChange(rt.value)}
                   >
                     <Text className={styles.typeEmoji}>{rt.emoji}</Text>
                     <Text className={styles.typeName}>{rt.label}</Text>
@@ -236,9 +299,11 @@ const TasksPage: React.FC = () => {
               <Textarea
                 className={styles.inputArea}
                 value={respContent}
-                onInput={(e) => setRespContent(e.detail.value)}
+                onInput={(e) => handleContentChange(e.detail.value)}
                 placeholder={
-                  respType === 'suggestion'
+                  isTaskExpired(currentTask)
+                    ? '任务已超时'
+                    : respType === 'suggestion'
                     ? '分享一些实用的建议吧...'
                     : respType === 'empathy'
                     ? '表达你的理解和安慰...'
@@ -246,11 +311,12 @@ const TasksPage: React.FC = () => {
                 }
                 maxlength={300}
                 autoHeight
+                disabled={isTaskExpired(currentTask)}
               />
               <Text className={styles.charCount}>{respContent.length}/300</Text>
             </View>
 
-            {respType === 'companionship' && (
+            {respType === 'companionship' && !isTaskExpired(currentTask) && (
               <View className={styles.quickTips}>
                 <Text className={styles.quickLabel}>💡 试试这些陪伴语</Text>
                 <View className={styles.tipChips}>
@@ -264,11 +330,11 @@ const TasksPage: React.FC = () => {
             )}
 
             <Button
-              className={classnames(styles.submitBtn, respContent.length < 5 && styles.disabledBtn)}
+              className={classnames(styles.submitBtn, (respContent.length < 5 || isTaskExpired(currentTask)) && styles.disabledBtn)}
               onClick={handleSubmit}
-              disabled={respContent.length < 5}
+              disabled={respContent.length < 5 || isTaskExpired(currentTask)}
             >
-              发送回应
+              {isTaskExpired(currentTask) ? '任务已超时' : '发送回应'}
             </Button>
           </View>
         </View>

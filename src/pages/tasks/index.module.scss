@@ -81,6 +81,11 @@
   box-shadow: $shadow-card;
 }
 
+.expiredCard {
+  opacity: 0.6;
+  background: linear-gradient(135deg, #FAFAFA 0%, #F5F5F5 100%);
+}
+
 .cardHeader {
   display: flex;
   align-items: center;
@@ -339,4 +344,14 @@
 .disabledBtn {
   background: $color-text-disabled;
   box-shadow: none;
+}
+
+.expiredNotice {
+  padding: $spacing-md;
+  background: rgba(255, 77, 79, 0.08);
+  border-radius: $radius-md;
+  margin-bottom: $spacing-lg;
+  color: #FF4D4F;
+  font-size: $font-size-sm;
+  text-align: center;
 }

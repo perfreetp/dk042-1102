@@ -42,6 +42,7 @@ export interface AssignedTask {
   expiresAt: string
   skipped: boolean
   completed: boolean
+  expired?: boolean
 }
 
 export interface MoodCheckin {
