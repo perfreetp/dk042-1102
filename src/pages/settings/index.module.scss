@@ -1,0 +1,126 @@
+@use '@/styles/variables.scss' as *;
+
+.pageContainer {
+  min-height: 100vh;
+  padding: $spacing-md $page-padding $spacing-xl;
+}
+
+.group {
+  background: $color-bg-card;
+  border-radius: $radius-lg;
+  overflow: hidden;
+  box-shadow: $shadow-card;
+  margin-bottom: $spacing-md;
+}
+
+.groupTitle {
+  font-size: $font-size-xs;
+  color: $color-text-tertiary;
+  padding: $spacing-md $spacing-lg $spacing-sm;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: $spacing-lg;
+  border-bottom: 1rpx solid $color-divider;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:active {
+    background: $color-bg-hover;
+  }
+}
+
+.itemLeft {
+  display: flex;
+  align-items: center;
+  gap: $spacing-md;
+}
+
+.itemIcon {
+  font-size: 36rpx;
+  width: 64rpx;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: $color-primary-bg;
+  border-radius: $radius-md;
+}
+
+.itemLabel {
+  font-size: $font-size-md;
+  color: $color-text-primary;
+}
+
+.itemRight {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.itemValue {
+  font-size: $font-size-sm;
+  color: $color-text-tertiary;
+}
+
+.arrow {
+  font-size: $font-size-lg;
+  color: $color-text-tertiary;
+}
+
+.switch {
+  width: 96rpx;
+  height: 56rpx;
+  background: $color-border;
+  border-radius: $radius-round;
+  position: relative;
+  transition: all $transition-base;
+}
+
+.switchOn {
+  background: $color-primary;
+}
+
+.switchDot {
+  position: absolute;
+  top: 4rpx;
+  left: 4rpx;
+  width: 48rpx;
+  height: 48rpx;
+  background: #fff;
+  border-radius: $radius-round;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.15);
+  transition: all $transition-base;
+}
+
+.switchOn .switchDot {
+  left: 44rpx;
+}
+
+.dangerBtn {
+  @include button-reset;
+  width: 100%;
+  height: $button-height-lg;
+  border-radius: $radius-button;
+  background: $color-bg-card;
+  color: $color-error;
+  font-size: $font-size-md;
+  box-shadow: $shadow-card;
+  margin-top: $spacing-lg;
+
+  &:active {
+    opacity: 0.8;
+  }
+}
+
+.version {
+  text-align: center;
+  font-size: $font-size-xs;
+  color: $color-text-tertiary;
+  margin-top: $spacing-xl;
+}
