@@ -15,7 +15,7 @@ const REASONS = [
 
 const ReportPage: React.FC = () => {
   const router = useRouter()
-  const { blockedUsers, addBlockedUser, removeBlockedUser, refreshTimeouts } = useApp()
+  const { blockedUsers, addBlockedUser, removeBlockedUser, refreshTimeouts, getBlockedByResponseId } = useApp()
   const [selectedReason, setSelectedReason] = useState<string | null>(null)
   const [detail, setDetail] = useState('')
   const [shouldBlock, setShouldBlock] = useState(true)
@@ -28,6 +28,8 @@ const ReportPage: React.FC = () => {
   })
 
   const canSubmit = selectedReason !== null
+
+  const existingBlocked = responseId ? getBlockedByResponseId(responseId) : null
 
   const generateAnonymousName = () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -49,11 +51,16 @@ const ReportPage: React.FC = () => {
       return
     }
 
-    if (shouldBlock) {
-      addBlockedUser({
-        name: generateAnonymousName(),
-        emoji: getRandomEmoji()
-      })
+    if (shouldBlock && responseId) {
+      if (existingBlocked) {
+        Taro.showToast({ title: '该用户已在黑名单中', icon: 'none' })
+      } else {
+        addBlockedUser({
+          name: generateAnonymousName(),
+          emoji: getRandomEmoji(),
+          responseId
+        })
+      }
     }
 
     Taro.showModal({

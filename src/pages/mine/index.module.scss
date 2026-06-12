@@ -377,3 +377,86 @@
   color: $color-text-white;
   border-color: $color-primary;
 }
+
+.feedbackMini {
+  background: rgba(124, 111, 230, 0.06);
+  border-radius: $radius-md;
+  padding: $spacing-sm $spacing-md;
+  margin-bottom: $spacing-md;
+  border-left: 4rpx solid $color-primary;
+}
+
+.feedbackMiniTitle {
+  font-size: 22rpx;
+  color: $color-primary;
+  font-weight: $font-weight-medium;
+  display: block;
+  margin-bottom: 8rpx;
+}
+
+.feedbackMiniTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+  margin-bottom: 8rpx;
+}
+
+.feedbackMiniTag {
+  font-size: 20rpx;
+  padding: 4rpx 12rpx;
+  background: rgba(124, 111, 230, 0.15);
+  color: $color-primary;
+  border-radius: $radius-sm;
+}
+
+.feedbackMiniComment {
+  font-size: 22rpx;
+  color: $color-text-secondary;
+  line-height: 1.5;
+  display: block;
+  font-style: italic;
+}
+
+.streakSummary {
+  background: linear-gradient(135deg, #FFF7F0 0%, #FFFFFF 100%);
+  border-radius: $radius-md;
+  padding: $spacing-lg;
+  margin-bottom: $spacing-md;
+  text-align: center;
+}
+
+.streakBig {
+  font-size: 32rpx;
+  font-weight: $font-weight-bold;
+  color: $color-secondary;
+  display: block;
+  margin-bottom: 8rpx;
+}
+
+.streakSub {
+  font-size: 24rpx;
+  color: $color-text-secondary;
+}
+
+.categoryGroup {
+  margin-bottom: $spacing-md;
+}
+
+.categoryHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: $spacing-sm;
+}
+
+.categoryName {
+  font-size: $font-size-sm;
+  font-weight: $font-weight-semibold;
+  color: $color-text-primary;
+}
+
+.categoryCount {
+  font-size: 22rpx;
+  color: $color-text-tertiary;
+}
+

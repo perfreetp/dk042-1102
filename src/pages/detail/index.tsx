@@ -1,18 +1,22 @@
-import React from 'react'
-import { View, Text, Button } from '@tarojs/components'
+import React, { useState } from 'react'
+import { View, Text, Button, Textarea } from '@tarojs/components'
 import Taro, { useRouter, useDidShow } from '@tarojs/taro'
 import styles from './index.module.scss'
 import classnames from 'classnames'
 import { useApp } from '@/store/AppContext'
-import { STATUS_LABELS } from '@/types'
+import { STATUS_LABELS, FEEDBACK_TAGS, FeedbackTag } from '@/types'
 import { getCategoryInfo, getSeverityInfo, formatTime, getRemainingTime } from '@/utils'
 import ResponseCard from '@/components/ResponseCard'
 import EmptyState from '@/components/EmptyState'
 
 const DetailPage: React.FC = () => {
   const router = useRouter()
-  const { myWorries, toggleFavorite, thankResponse, refreshTimeouts } = useApp()
+  const { myWorries, toggleFavorite, thankResponse, refreshTimeouts, submitResponseFeedback } = useApp()
   const worryId = router.params.id
+
+  const [showFeedback, setShowFeedback] = useState(false)
+  const [selectedTags, setSelectedTags] = useState<FeedbackTag[]>([])
+  const [feedbackComment, setFeedbackComment] = useState('')
 
   useDidShow(() => {
     refreshTimeouts()
@@ -52,6 +56,53 @@ const DetailPage: React.FC = () => {
     Taro.navigateTo({ url: `/pages/report/index?type=response&id=${worry.response?.id || ''}` })
   }
 
+  const toggleTag = (tag: FeedbackTag) => {
+    setSelectedTags(prev =>
+      prev.includes(tag)
+        ? prev.filter(t => t !== tag)
+        : [...prev, tag]
+    )
+  }
+
+  const handleSubmitFeedback = () => {
+    if (selectedTags.length === 0) {
+      Taro.showToast({ title: '请至少选择一个标签', icon: 'none' })
+      return
+    }
+    if (worry.response) {
+      submitResponseFeedback(worry.response.id, selectedTags, feedbackComment.trim())
+      Taro.showToast({ title: '反馈已提交，谢谢你！', icon: 'success' })
+      setShowFeedback(false)
+      setSelectedTags([])
+      setFeedbackComment('')
+    }
+  }
+
+  const renderFeedbackDisplay = () => {
+    if (!worry.response?.feedback) return null
+    const fb = worry.response.feedback
+    return (
+      <View className={styles.feedbackDisplay}>
+        <View className={styles.feedbackHeader}>
+          <Text className={styles.feedbackTitle}>🎯 你对这条回应的反馈</Text>
+        </View>
+        <View className={styles.feedbackTags}>
+          {fb.tags.map(tag => {
+            const ti = FEEDBACK_TAGS.find(t => t.value === tag)
+            return (
+              <View key={tag} className={styles.feedbackTag}>
+                {ti?.emoji} {ti?.label}
+              </View>
+            )
+          })}
+        </View>
+        {fb.comment && (
+          <Text className={styles.feedbackComment}>"{fb.comment}"</Text>
+        )}
+      </View>
+    )
+  }
+
   return (
     <View className={styles.pageContainer}>
       <View className={styles.worryCard}>
@@ -81,13 +132,63 @@ const DetailPage: React.FC = () => {
       <View className={styles.responseSection}>
         <Text className={styles.sectionTitle}>收到的回应</Text>
         {worry.response ? (
-          <ResponseCard
-            response={worry.response}
-            onFavorite={handleFavorite}
-            onThank={handleThank}
-            onFollowUp={handleFollowUp}
-            onReport={handleReport}
-          />
+          <View>
+            <ResponseCard
+              response={worry.response}
+              onFavorite={handleFavorite}
+              onThank={handleThank}
+              onFollowUp={handleFollowUp}
+              onReport={handleReport}
+            />
+
+            {renderFeedbackDisplay()}
+
+            {!worry.response.feedback && !showFeedback ? (
+              <Button className={styles.feedbackBtn} onClick={() => setShowFeedback(true)}>
+                ✍️ 给这条回应打个分
+              </Button>
+            ) : null}
+
+            {showFeedback && (
+              <View className={styles.feedbackModal}>
+                <View className={styles.feedbackModalHeader}>
+                  <Text className={styles.feedbackModalTitle}>这条回应对你有帮助吗？</Text>
+                  <Text className={styles.feedbackClose} onClick={() => setShowFeedback(false)}>✕</Text>
+                </View>
+
+                <Text className={styles.feedbackLabel}>选择标签（可多选）</Text>
+                <View className={styles.feedbackTagGrid}>
+                  {FEEDBACK_TAGS.map(tag => (
+                    <View
+                      key={tag.value}
+                      className={classnames(styles.feedbackTagItem, selectedTags.includes(tag.value) && styles.feedbackTagSelected)}
+                      onClick={() => toggleTag(tag.value)}
+                    >
+                      <Text>{tag.emoji} {tag.label}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                <Text className={styles.feedbackLabel}>写一句短评（选填）</Text>
+                <Textarea
+                  className={styles.feedbackInput}
+                  value={feedbackComment}
+                  onInput={(e) => setFeedbackComment(e.detail.value)}
+                  placeholder="对方会收到你的反馈，会更有动力继续温暖他人..."
+                  maxlength={100}
+                  autoHeight
+                />
+
+                <Button
+                  className={classnames(styles.feedbackSubmit, selectedTags.length === 0 && styles.disabledBtn)}
+                  onClick={handleSubmitFeedback}
+                  disabled={selectedTags.length === 0}
+                >
+                  提交反馈
+                </Button>
+              </View>
+            )}
+          </View>
         ) : worry.status === 'timeout' ? (
           <View className={styles.emptyResponse}>
             <Text className={styles.emptyEmoji}>⏰</Text>

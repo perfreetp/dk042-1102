@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react'
 import Taro from '@tarojs/taro'
-import { Worry, Response, AssignedTask, MoodCheckin, UserStats, BlockedUser, MyResponse, ResponseType } from '@/types'
+import { Worry, Response, AssignedTask, MoodCheckin, UserStats, BlockedUser, MyResponse, ResponseType, FeedbackTag, CategoryType } from '@/types'
 import { mockMyWorries, mockAssignedTasks, mockMoodHistory, mockUserStats, mockFavorites } from '@/data/mock'
 import { generateId } from '@/utils'
 
@@ -89,6 +89,13 @@ export interface PeriodSummary {
   checkinCount: number
 }
 
+export interface TrendStats {
+  currentStreak: number
+  maxStreak: number
+  thankedResponseCount: number
+  categoryStats: { category: CategoryType; count: number }[]
+}
+
 const EMPTY_RESPONSES_POOL: Record<ResponseType, string[]> = {
   empathy: [
     '我特别能理解你的感受，这种心情我也经历过。你已经做得很好了，允许自己有这样的情绪，慢慢来。',
@@ -126,13 +133,16 @@ interface AppContextType {
   toggleFavorite: (responseId: string) => void
   thankResponse: (responseId: string) => void
   addFollowUp: (responseId: string, content: string) => void
+  submitResponseFeedback: (responseId: string, tags: FeedbackTag[], comment: string) => void
   checkinMood: (mood: MoodCheckin['mood'], note: string) => void
   addBlockedUser: (user: Omit<BlockedUser, 'id' | 'blockedAt'>) => void
   removeBlockedUser: (userId: string) => void
   isBlockedByName: (name: string) => boolean
+  getBlockedByResponseId: (responseId: string) => BlockedUser | undefined
   refreshTimeouts: () => void
   getWeeklyMoods: () => (MoodCheckin | null)[]
   getSummary: (period: 'week' | 'month') => PeriodSummary
+  getTrendStats: () => TrendStats
   saveTaskDraft: (taskId: string, type: ResponseType, content: string) => void
   getTaskDraft: (taskId: string) => TaskDraft | undefined
   clearTaskDraft: (taskId: string) => void
@@ -262,7 +272,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       worryCategory: task.worry.category,
       type: resp.type,
       content: resp.content,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      isThanked: false
     }
     setMyResponses(prev => [myResp, ...prev])
     setUserStats(prev => ({
@@ -360,6 +371,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setUserStats(prev => ({ ...prev, thankedCount: prev.thankedCount + 1 }))
   }
 
+  const submitResponseFeedback = (responseId: string, tags: FeedbackTag[], comment: string) => {
+    const feedback = {
+      tags,
+      comment,
+      createdAt: new Date().toISOString()
+    }
+
+    setMyWorries(prev => prev.map(w => {
+      if (w.response && w.response.id === responseId) {
+        return { ...w, response: { ...w.response, feedback } }
+      }
+      return w
+    }))
+
+    setFavorites(prev => prev.map(f =>
+      f.id === responseId ? { ...f, feedback } : f
+    ))
+  }
+
   const addFollowUp = (responseId: string, content: string) => {
     setMyWorries(prev => prev.map(w => {
       if (w.response && w.response.id === responseId) {
@@ -389,8 +419,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const addBlockedUser = (user: Omit<BlockedUser, 'id' | 'blockedAt'>) => {
     setBlockedUsers(prev => {
-      const existing = prev.find(u => u.name === user.name)
-      if (existing) return prev
+      if (user.responseId) {
+        const existing = prev.find(u => u.responseId === user.responseId)
+        if (existing) return prev
+      }
       const newBlocked: BlockedUser = {
         ...user,
         id: generateId(),
@@ -408,13 +440,56 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return blockedUsers.some(u => u.name === name)
   }, [blockedUsers])
 
+  const getBlockedByResponseId = useCallback((responseId: string): BlockedUser | undefined => {
+    return blockedUsers.find(u => u.responseId === responseId)
+  }, [blockedUsers])
+
   const getSummary = useCallback((period: 'week' | 'month'): PeriodSummary => {
     const filter = period === 'week' ? isThisWeek : isThisMonth
     const postedCount = myWorries.filter(w => filter(new Date(w.createdAt))).length
     const respondedCount = myResponses.filter(r => filter(new Date(r.createdAt))).length
-    const thankedCount = myWorries.filter(w => w.response?.isThanked && filter(new Date(w.createdAt))).length
+    const thankedCount = myResponses.filter(r => r.isThanked && filter(new Date(r.createdAt))).length
     const checkinCount = moodHistory.filter(m => filter(new Date(m.createdAt))).length
     return { postedCount, respondedCount, thankedCount, checkinCount }
+  }, [myWorries, myResponses, moodHistory])
+
+  const getTrendStats = useCallback((): TrendStats => {
+    const sortedCheckins = [...moodHistory].sort((a, b) =>
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    )
+
+    let currentStreak = 0
+    let maxStreak = 0
+    let tempStreak = 0
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    for (let i = sortedCheckins.length - 1; i >= 0; i--) {
+      const checkinDate = new Date(sortedCheckins[i].createdAt)
+      checkinDate.setHours(0, 0, 0, 0)
+      const diffDays = Math.floor((today.getTime() - checkinDate.getTime()) / (1000 * 60 * 60 * 24))
+
+      if (diffDays <= 1 && diffDays >= 0) {
+        tempStreak++
+        if (diffDays === 0) currentStreak = tempStreak
+        maxStreak = Math.max(maxStreak, tempStreak)
+        today.setDate(today.getDate() - 1)
+      } else if (diffDays > 1) {
+        break
+      }
+    }
+
+    const thankedResponseCount = myResponses.filter(r => r.isThanked).length
+
+    const categoryMap = new Map<CategoryType, number>()
+    myWorries.forEach(w => {
+      categoryMap.set(w.category, (categoryMap.get(w.category) || 0) + 1)
+    })
+    const categoryStats = Array.from(categoryMap.entries())
+      .map(([category, count]) => ({ category, count }))
+      .sort((a, b) => b.count - a.count)
+
+    return { currentStreak, maxStreak, thankedResponseCount, categoryStats }
   }, [myWorries, myResponses, moodHistory])
 
   const saveTaskDraft = useCallback((taskId: string, type: ResponseType, content: string) => {
@@ -456,13 +531,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       toggleFavorite,
       thankResponse,
       addFollowUp,
+      submitResponseFeedback,
       checkinMood,
       addBlockedUser,
       removeBlockedUser,
       isBlockedByName,
+      getBlockedByResponseId,
       refreshTimeouts,
       getWeeklyMoods,
       getSummary,
+      getTrendStats,
       saveTaskDraft,
       getTaskDraft,
       clearTaskDraft

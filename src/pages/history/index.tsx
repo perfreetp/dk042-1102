@@ -5,7 +5,7 @@ import styles from './index.module.scss'
 import classnames from 'classnames'
 import { useApp } from '@/store/AppContext'
 import { getCategoryInfo, formatTime } from '@/utils'
-import { STATUS_LABELS, ResponseType, RESPONSE_TYPES } from '@/types'
+import { STATUS_LABELS, ResponseType, RESPONSE_TYPES, Worry, MyResponse, FEEDBACK_TAGS } from '@/types'
 import EmptyState from '@/components/EmptyState'
 
 type TabType = 'posted' | 'responded'
@@ -42,6 +42,40 @@ const HistoryPage: React.FC = () => {
     })
     return list
   }, [myResponses, sortType, filterType])
+
+  const renderFeedbackForPosted = (worry: Worry) => {
+    if (!worry.response?.feedback) return null
+    const fb = worry.response.feedback
+    return (
+      <View className={styles.feedbackBox}>
+        <Text className={styles.feedbackLabel}>🎯 我给这条回应的反馈</Text>
+        <View className={styles.feedbackTags}>
+          {fb.tags.map(tag => {
+            const ti = FEEDBACK_TAGS.find(t => t.value === tag)
+            return <Text key={tag} className={styles.feedbackTag}>{ti?.emoji} {ti?.label}</Text>
+          })}
+        </View>
+        {fb.comment && <Text className={styles.feedbackComment}>"{fb.comment}"</Text>}
+      </View>
+    )
+  }
+
+  const renderFeedbackForResponded = (resp: MyResponse) => {
+    if (!resp.feedback) return null
+    const fb = resp.feedback
+    return (
+      <View className={styles.feedbackBox}>
+        <Text className={styles.feedbackLabel}>🎯 对方给我的反馈</Text>
+        <View className={styles.feedbackTags}>
+          {fb.tags.map(tag => {
+            const ti = FEEDBACK_TAGS.find(t => t.value === tag)
+            return <Text key={tag} className={styles.feedbackTag}>{ti?.emoji} {ti?.label}</Text>
+          })}
+        </View>
+        {fb.comment && <Text className={styles.feedbackComment}>"{fb.comment}"</Text>}
+      </View>
+    )
+  }
 
   return (
     <ScrollView scrollY className={styles.pageContainer}>
@@ -129,6 +163,18 @@ const HistoryPage: React.FC = () => {
                   </Text>
                 </View>
                 <Text className={styles.recordContent}>{worry.content}</Text>
+                {worry.response && worry.response.content && (
+                  <View className={styles.responseBox}>
+                    <Text className={styles.responseLabel}>
+                      {worry.response.type === 'suggestion' ? '💡 对方建议：' :
+                       worry.response.type === 'empathy' ? '🤗 对方共情：' : '🌙 对方陪伴：'}
+                    </Text>
+                    <Text className={styles.responseContent}>
+                      {worry.response.content}
+                    </Text>
+                  </View>
+                )}
+                {renderFeedbackForPosted(worry)}
                 <View className={styles.recordMeta}>
                   <Text>{category.emoji} {category.label}</Text>
                   <Text>{formatTime(worry.createdAt)}</Text>
@@ -169,6 +215,7 @@ const HistoryPage: React.FC = () => {
                     {resp.content}
                   </Text>
                 </View>
+                {renderFeedbackForResponded(resp)}
                 <View className={styles.recordMeta}>
                   <Text>{category.emoji} {category.label}</Text>
                   <Text>{formatTime(resp.createdAt)}</Text>

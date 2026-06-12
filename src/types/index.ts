@@ -33,7 +33,24 @@ export interface Response {
   isThanked: boolean
   canFollowUp: boolean
   followUpContent?: string
+  feedback?: ResponseFeedback
 }
+
+export interface ResponseFeedback {
+  tags: FeedbackTag[]
+  comment: string
+  createdAt: string
+}
+
+export type FeedbackTag = 'helpful' | 'understood' | 'too_general' | 'warm' | 'inspiring'
+
+export const FEEDBACK_TAGS = [
+  { value: 'helpful' as FeedbackTag, label: '有帮助', emoji: '💡' },
+  { value: 'understood' as FeedbackTag, label: '被理解', emoji: '🤗' },
+  { value: 'warm' as FeedbackTag, label: '很温暖', emoji: '☀️' },
+  { value: 'inspiring' as FeedbackTag, label: '受启发', emoji: '✨' },
+  { value: 'too_general' as FeedbackTag, label: '太泛泛', emoji: '😐' }
+]
 
 export interface AssignedTask {
   id: string
@@ -67,6 +84,7 @@ export interface BlockedUser {
   name: string
   emoji: string
   blockedAt: string
+  responseId?: string
 }
 
 export interface MyResponse {
@@ -77,6 +95,8 @@ export interface MyResponse {
   type: ResponseType
   content: string
   createdAt: string
+  feedback?: ResponseFeedback
+  isThanked?: boolean
 }
 
 export interface CategoryOption {
