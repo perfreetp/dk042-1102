@@ -187,3 +187,104 @@
   color: $color-text-secondary;
   line-height: $line-height-normal;
 }
+
+.blockedHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: $spacing-md;
+}
+
+.blockedCount {
+  font-size: $font-size-sm;
+  color: $color-text-secondary;
+}
+
+.emptyBlocked {
+  background: $color-bg-card;
+  border-radius: $radius-lg;
+  padding: $spacing-xl $spacing-lg;
+  text-align: center;
+  box-shadow: $shadow-card;
+}
+
+.emptyBlockedEmoji {
+  font-size: 64rpx;
+  display: block;
+  margin-bottom: $spacing-sm;
+}
+
+.emptyBlockedText {
+  font-size: $font-size-md;
+  color: $color-text-primary;
+  font-weight: $font-weight-medium;
+  margin-bottom: $spacing-xs;
+  display: block;
+}
+
+.emptyBlockedSub {
+  font-size: $font-size-xs;
+  color: $color-text-tertiary;
+  display: block;
+}
+
+.blockedCardList {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.blockedCardItem {
+  background: $color-bg-card;
+  border-radius: $radius-lg;
+  padding: $spacing-md $spacing-lg;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: $shadow-card;
+}
+
+.blockedCardInfo {
+  display: flex;
+  align-items: center;
+  gap: $spacing-md;
+}
+
+.blockedCardAvatar {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  background: rgba(255, 107, 107, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36rpx;
+}
+
+.blockedCardName {
+  font-size: $font-size-md;
+  color: $color-text-primary;
+  font-weight: $font-weight-medium;
+  margin-bottom: 4rpx;
+  display: block;
+}
+
+.blockedCardTime {
+  font-size: $font-size-xs;
+  color: $color-text-tertiary;
+  display: block;
+}
+
+.blockedCardUnblock {
+  @include button-reset;
+  padding: 14rpx 28rpx;
+  border-radius: $radius-button;
+  background: rgba(124, 111, 230, 0.08);
+  color: $color-primary;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-medium;
+
+  &:active {
+    opacity: 0.8;
+  }
+}

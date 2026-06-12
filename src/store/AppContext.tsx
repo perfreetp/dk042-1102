@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react'
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react'
 import Taro from '@tarojs/taro'
-import { Worry, Response, AssignedTask, MoodCheckin, UserStats, BlockedUser, MyResponse } from '@/types'
+import { Worry, Response, AssignedTask, MoodCheckin, UserStats, BlockedUser, MyResponse, ResponseType } from '@/types'
 import { mockMyWorries, mockAssignedTasks, mockMoodHistory, mockUserStats, mockFavorites } from '@/data/mock'
 import { generateId } from '@/utils'
 
@@ -34,6 +34,12 @@ const setToStorage = <T,>(key: string, value: T): void => {
   }
 }
 
+const isSameDay = (d1: Date, d2: Date): boolean => {
+  return d1.getFullYear() === d2.getFullYear()
+    && d1.getMonth() === d2.getMonth()
+    && d1.getDate() === d2.getDate()
+}
+
 const checkAndUpdateTimeouts = (worries: Worry[]): Worry[] => {
   const now = Date.now()
   return worries.map(w => {
@@ -44,6 +50,31 @@ const checkAndUpdateTimeouts = (worries: Worry[]): Worry[] => {
   })
 }
 
+const checkAndUpdateTaskTimeouts = (tasks: AssignedTask[]): AssignedTask[] => {
+  return tasks
+}
+
+const EMPTY_RESPONSES_POOL: Record<ResponseType, string[]> = {
+  empathy: [
+    '我特别能理解你的感受，这种心情我也经历过。你已经做得很好了，允许自己有这样的情绪，慢慢来。',
+    '看到你说的这些，我心里也跟着难受。你不是一个人，有很多人都在默默关心着你。',
+    '抱抱你，辛苦了。能说出来已经很勇敢了，给自己一点时间，一切都会慢慢好起来的。',
+    '我懂那种说不出口的委屈，你已经很坚强了。有时候哭一哭也没关系的。'
+  ],
+  suggestion: [
+    '也许你可以试着把大问题拆分成小步骤，每次只解决一个小问题，压力会小很多。',
+    '建议你找个信任的人聊聊，有时候说出来就会轻松很多。也可以试试写下来，整理一下思路。',
+    '或许可以给自己安排一点放松的时间，哪怕只是散散步、听听音乐，对心情会有帮助的。',
+    '可以先列一个清单，把事情按重要程度排序，一件一件来，不用急。'
+  ],
+  companionship: [
+    '我在这里陪着你，你不是一个人。想说什么都可以，我在听。',
+    '静静地陪着你，这种感觉我懂。不用急，我们慢慢来。',
+    '有我在呢，你可以放心地脆弱一会儿。明天会更好的。',
+    '不用说话也没关系，我就陪你一会儿。你已经很棒了。'
+  ]
+}
+
 interface AppContextType {
   myWorries: Worry[]
   assignedTasks: AssignedTask[]
@@ -52,6 +83,7 @@ interface AppContextType {
   favorites: Response[]
   blockedUsers: BlockedUser[]
   myResponses: MyResponse[]
+  hasCheckedInToday: boolean
   addWorry: (worry: Omit<Worry, 'id' | 'createdAt' | 'expiresAt' | 'status'>) => void
   completeTask: (taskId: string, response: Omit<Response, 'id' | 'worryId' | 'createdAt' | 'isAnonymous' | 'isFavorite' | 'isThanked' | 'canFollowUp'>) => void
   skipTask: (taskId: string) => void
@@ -62,6 +94,7 @@ interface AppContextType {
   addBlockedUser: (user: Omit<BlockedUser, 'id' | 'blockedAt'>) => void
   removeBlockedUser: (userId: string) => void
   refreshTimeouts: () => void
+  getWeeklyMoods: () => (MoodCheckin | null)[]
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined)
@@ -74,7 +107,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const [assignedTasks, setAssignedTasks] = useState<AssignedTask[]>(() => {
     const stored = getFromStorage<AssignedTask[]>(STORAGE_KEYS.ASSIGNED_TASKS, [])
-    return stored.length > 0 ? stored : mockAssignedTasks
+    return checkAndUpdateTaskTimeouts(stored.length > 0 ? stored : mockAssignedTasks)
   })
 
   const [moodHistory, setMoodHistory] = useState<MoodCheckin[]>(() => {
@@ -127,6 +160,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setToStorage(STORAGE_KEYS.MY_RESPONSES, myResponses)
   }, [myResponses])
 
+  const hasCheckedInToday = useMemo(() => {
+    const today = new Date()
+    return moodHistory.some(m => isSameDay(new Date(m.createdAt), today))
+  }, [moodHistory])
+
+  const getWeeklyMoods = useCallback((): (MoodCheckin | null)[] => {
+    const result: (MoodCheckin | null)[] = []
+    const today = new Date()
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(today)
+      date.setDate(date.getDate() - i)
+      const found = moodHistory.find(m => isSameDay(new Date(m.createdAt), date))
+      result.push(found || null)
+    }
+    return result
+  }, [moodHistory])
+
   const refreshTimeouts = useCallback(() => {
     setMyWorries(prev => checkAndUpdateTimeouts(prev))
   }, [])
@@ -169,29 +219,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }))
 
     setMyWorries(prev => {
-      const pendingWorry = prev.find(w => w.status === 'pending' || w.status === 'matched')
-      if (!pendingWorry) return prev
+      const refreshed = checkAndUpdateTimeouts(prev)
+      const pendingWorry = refreshed.find(w => w.status === 'pending' || w.status === 'matched')
+      if (!pendingWorry) return refreshed
 
-      const mockResponses: Record<string, string[]> = {
-        empathy: [
-          '我特别能理解你的感受，这种心情我也经历过。你已经做得很好了，允许自己有这样的情绪，慢慢来。',
-          '看到你说的这些，我心里也跟着难受。你不是一个人，有很多人都在默默关心着你。',
-          '抱抱你，辛苦了。能说出来已经很勇敢了，给自己一点时间，一切都会慢慢好起来的。'
-        ],
-        suggestion: [
-          '也许你可以试着把大问题拆分成小步骤，每次只解决一个小问题，压力会小很多。',
-          '建议你找个信任的人聊聊，有时候说出来就会轻松很多。也可以试试写下来，整理一下思路。',
-          '或许可以给自己安排一点放松的时间，哪怕只是散散步、听听音乐，对心情会有帮助的。'
-        ],
-        companionship: [
-          '我在这里陪着你，你不是一个人。想说什么都可以，我在听。',
-          '静静地陪着你，这种感觉我懂。不用急，我们慢慢来。',
-          '有我在呢，你可以放心地脆弱一会儿。明天会更好的。'
-        ]
-      }
-
-      const typeResponses = mockResponses[resp.type] || mockResponses.empathy
-      const randomContent = typeResponses[Math.floor(Math.random() * typeResponses.length)]
+      const pool = EMPTY_RESPONSES_POOL[pendingWorry.expectedResponse] || EMPTY_RESPONSES_POOL.empathy
+      const randomContent = pool[Math.floor(Math.random() * pool.length)]
 
       const newResponse: Response = {
         id: generateId(),
@@ -205,7 +238,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         canFollowUp: true
       }
 
-      return prev.map(w =>
+      return refreshed.map(w =>
         w.id === pendingWorry.id
           ? { ...w, status: 'responded' as const, response: newResponse }
           : w
@@ -222,29 +255,36 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }
 
   const toggleFavorite = (responseId: string) => {
-    setMyWorries(prev => {
-      let respToToggle: Response | null = null
-      const updated = prev.map(w => {
-        if (w.response && w.response.id === responseId) {
-          respToToggle = { ...w.response, isFavorite: !w.response.isFavorite }
-          return { ...w, response: respToToggle }
-        }
-        return w
-      })
+    let targetResponse: Response | undefined
 
-      if (respToToggle) {
-        setFavorites(prevFavs => {
-          const exists = prevFavs.some(f => f.id === responseId)
-          if (respToToggle!.isFavorite && !exists) {
-            return [{ ...respToToggle!, isFavorite: true }, ...prevFavs]
-          } else if (!respToToggle!.isFavorite && exists) {
-            return prevFavs.filter(f => f.id !== responseId)
-          }
-          return prevFavs
-        })
+    const worryWithResp = myWorries.find(w => w.response?.id === responseId)
+    const favWithResp = favorites.find(f => f.id === responseId)
+    targetResponse = worryWithResp?.response || favWithResp
+
+    if (!targetResponse) return
+
+    const willBeFavorite = !targetResponse.isFavorite
+
+    setMyWorries(prev => prev.map(w => {
+      if (w.response && w.response.id === responseId) {
+        return { ...w, response: { ...w.response, isFavorite: willBeFavorite } }
       }
+      return w
+    }))
 
-      return updated
+    setFavorites(prev => {
+      const exists = prev.some(f => f.id === responseId)
+      if (willBeFavorite && !exists) {
+        const toSave: Response = { ...targetResponse!, isFavorite: true }
+        const worryWithIt = myWorries.find(w => w.response?.id === responseId)
+        if (worryWithIt?.response) {
+          return [{ ...worryWithIt.response, isFavorite: true }, ...prev]
+        }
+        return [toSave, ...prev]
+      } else if (!willBeFavorite && exists) {
+        return prev.filter(f => f.id !== responseId)
+      }
+      return prev
     })
   }
 
@@ -277,13 +317,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }
 
   const checkinMood = (mood: MoodCheckin['mood'], note: string) => {
-    const newCheckin: MoodCheckin = {
-      id: generateId(),
-      mood,
-      note,
-      createdAt: new Date().toISOString()
-    }
-    setMoodHistory(prev => [newCheckin, ...prev])
+    const now = new Date()
+    setMoodHistory(prev => {
+      const filtered = prev.filter(m => !isSameDay(new Date(m.createdAt), now))
+      const newCheckin: MoodCheckin = {
+        id: generateId(),
+        mood,
+        note,
+        createdAt: now.toISOString()
+      }
+      return [newCheckin, ...filtered]
+    })
   }
 
   const addBlockedUser = (user: Omit<BlockedUser, 'id' | 'blockedAt'>) => {
@@ -311,6 +355,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       favorites,
       blockedUsers,
       myResponses,
+      hasCheckedInToday,
       addWorry,
       completeTask,
       skipTask,
@@ -320,7 +365,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       checkinMood,
       addBlockedUser,
       removeBlockedUser,
-      refreshTimeouts
+      refreshTimeouts,
+      getWeeklyMoods
     }}>
       {children}
     </AppContext.Provider>

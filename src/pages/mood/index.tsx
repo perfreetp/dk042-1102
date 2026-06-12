@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
-import { View, Text, Textarea, Button } from '@tarojs/components'
-import Taro from '@tarojs/taro'
+import { View, Text, Textarea, Button, ScrollView } from '@tarojs/components'
+import Taro, { useDidShow } from '@tarojs/taro'
 import styles from './index.module.scss'
 import classnames from 'classnames'
 import { useApp } from '@/store/AppContext'
@@ -8,12 +8,22 @@ import { MOODS, MoodType } from '@/types'
 import { formatTime } from '@/utils'
 import EmptyState from '@/components/EmptyState'
 
+const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日']
+
 const MoodPage: React.FC = () => {
-  const { moodHistory, checkinMood } = useApp()
+  const { moodHistory, checkinMood, getWeeklyMoods, hasCheckedInToday, refreshTimeouts } = useApp()
   const [selectedMood, setSelectedMood] = useState<MoodType | null>(null)
   const [note, setNote] = useState('')
 
+  useDidShow(() => {
+    refreshTimeouts()
+  })
+
   const canSubmit = selectedMood !== null
+  const weeklyMoods = getWeeklyMoods()
+
+  const today = new Date()
+  const todayDayOfWeek = (today.getDay() + 6) % 7
 
   const handleSubmit = () => {
     if (!canSubmit || !selectedMood) return
@@ -24,12 +34,43 @@ const MoodPage: React.FC = () => {
   }
 
   return (
-    <View className={styles.pageContainer}>
+    <ScrollView scrollY className={styles.pageContainer}>
       <Text className={styles.title}>情绪打卡 🌈</Text>
-      <Text className={styles.subTitle}>记录今天的心情，温柔对待自己</Text>
+      <Text className={styles.subTitle}>
+        {hasCheckedInToday ? '今天已经打过卡啦，明天继续～' : '记录今天的心情，温柔对待自己'}
+      </Text>
+
+      <View className={styles.weekCard}>
+        <Text className={styles.weekTitle}>最近七天</Text>
+        <View className={styles.weekGrid}>
+          {weeklyMoods.map((m, i) => {
+            const moodInfo = m ? MOODS.find(x => x.value === m.mood) : null
+            const isToday = i === todayDayOfWeek
+            return (
+              <View key={i} className={classnames(styles.weekItem, isToday && styles.weekItemToday)}>
+                <Text className={styles.weekDay}>
+                  {WEEKDAYS[i]}
+                </Text>
+                <View className={styles.weekEmojiBox}>
+                  {moodInfo ? (
+                    <Text className={styles.weekEmoji}>{moodInfo.emoji}</Text>
+                  ) : (
+                    <Text className={styles.weekEmpty}>·</Text>
+                  )}
+                </View>
+                {m?.note && (
+                  <Text className={styles.weekNote}>{m.note.length > 6 ? m.note.slice(0, 6) + '…' : m.note}</Text>
+                )}
+              </View>
+            )
+          })}
+        </View>
+      </View>
 
       <View className={styles.checkinCard}>
-        <Text className={styles.cardTitle}>今天的心情怎么样？</Text>
+        <Text className={styles.cardTitle}>
+          {hasCheckedInToday ? '更新今天的心情' : '今天的心情怎么样？'}
+        </Text>
         <View className={styles.moodGrid}>
           {MOODS.map(mood => (
             <View
@@ -64,7 +105,7 @@ const MoodPage: React.FC = () => {
           onClick={handleSubmit}
           disabled={!canSubmit}
         >
-          完成打卡
+          {hasCheckedInToday ? '更新打卡' : '完成打卡'}
         </Button>
       </View>
 
@@ -89,7 +130,7 @@ const MoodPage: React.FC = () => {
           })
         )}
       </View>
-    </View>
+    </ScrollView>
   )
 }
 

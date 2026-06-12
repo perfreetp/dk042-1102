@@ -1,18 +1,22 @@
-import React, { useState } from 'react'
-import { View, Text } from '@tarojs/components'
+import React, { useState, useMemo } from 'react'
+import { View, Text, ScrollView } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
 import styles from './index.module.scss'
 import classnames from 'classnames'
 import { useApp } from '@/store/AppContext'
 import { getCategoryInfo, formatTime } from '@/utils'
-import { STATUS_LABELS } from '@/types'
+import { STATUS_LABELS, ResponseType, RESPONSE_TYPES } from '@/types'
 import EmptyState from '@/components/EmptyState'
 
 type TabType = 'posted' | 'responded'
+type SortType = 'newest' | 'oldest'
+type FilterType = 'all' | ResponseType
 
 const HistoryPage: React.FC = () => {
   const { myWorries, userStats, myResponses, refreshTimeouts } = useApp()
   const [activeTab, setActiveTab] = useState<TabType>('posted')
+  const [sortType, setSortType] = useState<SortType>('newest')
+  const [filterType, setFilterType] = useState<FilterType>('all')
 
   useDidShow(() => {
     refreshTimeouts()
@@ -22,8 +26,25 @@ const HistoryPage: React.FC = () => {
     Taro.navigateTo({ url: `/pages/detail/index?id=${worryId}` })
   }
 
+  const handleSortChange = () => {
+    const newSort = sortType === 'newest' ? 'oldest' : 'newest'
+    setSortType(newSort)
+  }
+
+  const displayedResponses = useMemo(() => {
+    let list = [...myResponses]
+    if (filterType !== 'all') {
+      list = list.filter(r => r.type === filterType)
+    }
+    list.sort((a, b) => {
+      const diff = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      return sortType === 'newest' ? -diff : diff
+    })
+    return list
+  }, [myResponses, sortType, filterType])
+
   return (
-    <View className={styles.pageContainer}>
+    <ScrollView scrollY className={styles.pageContainer}>
       <View className={styles.summaryCard}>
         <View className={styles.summaryRow}>
           <Text className={styles.summaryLabel}>发布烦恼</Text>
@@ -58,6 +79,34 @@ const HistoryPage: React.FC = () => {
         </View>
       </View>
 
+      {activeTab === 'responded' && (
+        <View className={styles.filterBar}>
+          <View className={styles.filterSection}>
+            <Text className={styles.filterLabel}>回应类型：</Text>
+            <View className={styles.filterChips}>
+              <View
+                className={classnames(styles.filterChip, filterType === 'all' && styles.chipActive)}
+                onClick={() => setFilterType('all')}
+              >
+                全部
+              </View>
+              {RESPONSE_TYPES.map(rt => (
+                <View
+                  key={rt.value}
+                  className={classnames(styles.filterChip, filterType === rt.value && styles.chipActive)}
+                  onClick={() => setFilterType(rt.value)}
+                >
+                  {rt.emoji} {rt.label}
+                </View>
+              ))}
+            </View>
+          </View>
+          <View className={styles.sortBtn} onClick={handleSortChange}>
+            {sortType === 'newest' ? '↓ 最新优先' : '↑ 最早优先'}
+          </View>
+        </View>
+      )}
+
       {activeTab === 'posted' ? (
         myWorries.length === 0 ? (
           <EmptyState emoji="📝" title="暂无发布记录" desc="去写一条烦恼吧" />
@@ -89,10 +138,10 @@ const HistoryPage: React.FC = () => {
           })
         )
       ) : (
-        myResponses.length === 0 ? (
+        displayedResponses.length === 0 ? (
           <EmptyState emoji="🤗" title="暂无回应记录" desc="去回应别人的烦恼吧" />
         ) : (
-          myResponses.map(resp => {
+          displayedResponses.map(resp => {
             const category = getCategoryInfo(resp.worryCategory)
             const typeInfo = {
               suggestion: { emoji: '💡', label: '建议' },
@@ -112,25 +161,11 @@ const HistoryPage: React.FC = () => {
                 <Text className={styles.recordContent}>
                   对方：{resp.worryContent}
                 </Text>
-                <View
-                  style={{
-                    padding: '16rpx 20rpx',
-                    background: 'rgba(124, 111, 230, 0.06)',
-                    borderRadius: '12rpx',
-                    marginTop: '16rpx'
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: '22rpx',
-                      color: '#7C6FE6',
-                      marginBottom: '8rpx',
-                      display: 'block'
-                    }}
-                  >
-                    我的回应：
+                <View className={styles.myResponseBox}>
+                  <Text className={styles.myRespLabel}>
+                    我的回应（{typeInfo.label}）：
                   </Text>
-                  <Text style={{ fontSize: '26rpx', color: '#2C2C3D', lineHeight: 1.6 }}>
+                  <Text className={styles.myRespContent}>
                     {resp.content}
                   </Text>
                 </View>
@@ -143,7 +178,7 @@ const HistoryPage: React.FC = () => {
           })
         )
       )}
-    </View>
+    </ScrollView>
   )
 }
 

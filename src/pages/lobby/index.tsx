@@ -8,7 +8,7 @@ import WorryCard from '@/components/WorryCard'
 import EmptyState from '@/components/EmptyState'
 
 const LobbyPage: React.FC = () => {
-  const { userStats, myWorries, assignedTasks, refreshTimeouts } = useApp()
+  const { userStats, myWorries, assignedTasks, refreshTimeouts, hasCheckedInToday } = useApp()
 
   useDidShow(() => {
     refreshTimeouts()
@@ -80,9 +80,11 @@ const LobbyPage: React.FC = () => {
             <Text className={styles.actionDesc}>给陌生人温暖</Text>
           </View>
           <View className={styles.actionCard} onClick={handleGotoMood}>
-            <Text className={styles.actionEmoji}>🌈</Text>
+            <Text className={styles.actionEmoji}>{hasCheckedInToday ? '✅' : '🌈'}</Text>
             <Text className={styles.actionTitle}>情绪打卡</Text>
-            <Text className={styles.actionDesc}>记录今日心情</Text>
+            <Text className={styles.actionDesc}>
+              {hasCheckedInToday ? '今日已打卡' : '记录今日心情'}
+            </Text>
           </View>
           <View className={styles.actionCard} onClick={handleGotoHistory}>
             <Text className={styles.actionEmoji}>📖</Text>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { View, Text, Button, Textarea, ScrollView } from '@tarojs/components'
-import Taro from '@tarojs/taro'
+import Taro, { useDidShow } from '@tarojs/taro'
 import styles from './index.module.scss'
 import classnames from 'classnames'
 import { useApp } from '@/store/AppContext'
@@ -20,7 +20,11 @@ const COMPANION_TIPS = [
 ]
 
 const TasksPage: React.FC = () => {
-  const { assignedTasks, userStats, completeTask, skipTask } = useApp()
+  const { assignedTasks, userStats, completeTask, skipTask, refreshTimeouts } = useApp()
+
+  useDidShow(() => {
+    refreshTimeouts()
+  })
   const [activeTab, setActiveTab] = useState<TabType>('pending')
   const [showModal, setShowModal] = useState(false)
   const [currentTask, setCurrentTask] = useState<AssignedTask | null>(null)

@@ -88,6 +88,13 @@ const DetailPage: React.FC = () => {
             onFollowUp={handleFollowUp}
             onReport={handleReport}
           />
+        ) : worry.status === 'timeout' ? (
+          <View className={styles.emptyResponse}>
+            <Text className={styles.emptyEmoji}>⏰</Text>
+            <Text className={styles.emptyText}>
+              这条烦恼已超时回收{'\n'}下次有烦恼可以早点发布哦
+            </Text>
+          </View>
         ) : (
           <View className={styles.emptyResponse}>
             <Text className={styles.emptyEmoji}>💭</Text>

@@ -1,7 +1,9 @@
 import React from 'react'
-import { View, Text, Button } from '@tarojs/components'
-import Taro from '@tarojs/taro'
+import { View, Text, Button, ScrollView } from '@tarojs/components'
+import Taro, { useDidShow } from '@tarojs/taro'
 import styles from './index.module.scss'
+import { useApp } from '@/store/AppContext'
+import { formatTime } from '@/utils'
 
 const HOTLINES = [
   { name: '全国心理援助热线', number: '400-161-9995' },
@@ -18,6 +20,11 @@ const GUIDELINES = [
 ]
 
 const SafetyPage: React.FC = () => {
+  const { blockedUsers, removeBlockedUser, refreshTimeouts } = useApp()
+
+  useDidShow(() => {
+    refreshTimeouts()
+  })
 
   const handleCall = (number: string) => {
     Taro.showModal({
@@ -55,8 +62,21 @@ const SafetyPage: React.FC = () => {
     })
   }
 
+  const handleUnblock = (userId: string, userName: string) => {
+    Taro.showModal({
+      title: '解除拉黑',
+      content: `确定要解除对 ${userName} 的拉黑吗？`,
+      success: (res) => {
+        if (res.confirm) {
+          removeBlockedUser(userId)
+          Taro.showToast({ title: '已解除拉黑', icon: 'success' })
+        }
+      }
+    })
+  }
+
   return (
-    <View className={styles.pageContainer}>
+    <ScrollView scrollY className={styles.pageContainer}>
       <Text className={styles.title}>安全中心 🛡️</Text>
       <Text className={styles.subTitle}>你的安全和隐私是我们最在意的事</Text>
 
@@ -132,7 +152,41 @@ const SafetyPage: React.FC = () => {
           ))}
         </View>
       </View>
-    </View>
+
+      <View className={styles.section}>
+        <View className={styles.blockedHeader}>
+          <Text className={styles.sectionTitle}>我的黑名单</Text>
+          <Text className={styles.blockedCount}>{blockedUsers.length} 人</Text>
+        </View>
+        {blockedUsers.length === 0 ? (
+          <View className={styles.emptyBlocked}>
+            <Text className={styles.emptyBlockedEmoji}>🟢</Text>
+            <Text className={styles.emptyBlockedText}>暂无拉黑的用户</Text>
+            <Text className={styles.emptyBlockedSub}>你可以在回应详情页举报并拉黑不当用户</Text>
+          </View>
+        ) : (
+          <View className={styles.blockedCardList}>
+            {blockedUsers.map(u => (
+              <View key={u.id} className={styles.blockedCardItem}>
+                <View className={styles.blockedCardInfo}>
+                  <View className={styles.blockedCardAvatar}>{u.emoji}</View>
+                  <View>
+                    <Text className={styles.blockedCardName}>{u.name}</Text>
+                    <Text className={styles.blockedCardTime}>拉黑于 {formatTime(u.blockedAt)}</Text>
+                  </View>
+                </View>
+                <Button
+                  className={styles.blockedCardUnblock}
+                  onClick={() => handleUnblock(u.id, u.name)}
+                >
+                  解除拉黑
+                </Button>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+    </ScrollView>
   )
 }
 
